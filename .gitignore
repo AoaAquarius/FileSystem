@@ -3,3 +3,6 @@
 ################################################################################
 
 /.vs/FileSystem/v16/Server/sqlite3
+/FileSystem/obj
+/.vs/FileSystem
+/FileSystemSlave/obj
