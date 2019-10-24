@@ -12,3 +12,5 @@
 /FileSystemMaster/bin/Debug/netcoreapp2.2
 /FileSystem/bin/Release/netcoreapp2.2
 /FileSystem/bin/Debug/netcoreapp2.2
+/FileSystemMaster/obj
+/FileSystemSlave/bin/Debug/netcoreapp2.2
