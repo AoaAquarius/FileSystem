@@ -22,42 +22,65 @@ namespace FileSystemMaster.Controllers
 
         [Route("Get")]
         [HttpGet]
-        public FileMetaData Get(string fileName)
+        public IActionResult Get(string fileName)
         {
-            if (!_inMemoryStorage.Files.ContainsKey(fileName))
-                return null;
-            FileMetaData fileMetaData = _inMemoryStorage.Files.GetValueOrDefault(fileName);
-            return fileMetaData;
+            try
+            {
+                if (!_inMemoryStorage.Files.ContainsKey(fileName))
+                    return null;
+                FileMetaData fileMetaData = _inMemoryStorage.Files.GetValueOrDefault(fileName);
+                return Ok(fileMetaData);
+            }
+            catch (Exception e)
+            {
+                return BadRequest(e.Message);
+            }
         }
 
         [Route("Save")]
         [HttpGet]
-        public FileMetaData Save(string fileName, string fileSize)
+        public IActionResult Save(string fileName, string fileSize)
         {
-            if (_inMemoryStorage.Files.ContainsKey(fileName))
+            int curCount = 0;
+            string curfilePieceName;
+            long curHashCode;
+            try
             {
-                return _inMemoryStorage.Files.GetValueOrDefault(fileName);
+                if (_inMemoryStorage.Files.ContainsKey(fileName))
+                {
+                    return Ok(_inMemoryStorage.Files.GetValueOrDefault(fileName));
+                }
+                int chunkSize = 20 * 1024;
+                long fileTotalSize = Convert.ToInt64(fileSize);
+                int totalPieceCount = (int)(fileTotalSize / chunkSize);
+                if (fileTotalSize % chunkSize != 0)
+                    totalPieceCount++;
+                FileMetaData fileMetaData = new FileMetaData(fileName, totalPieceCount, chunkSize);
+                curCount = totalPieceCount;
+                while (curCount > 0)
+                {
+                    int pieceIndex = totalPieceCount - curCount;
+                    string filePieceName = Helper.GetFilePieceName(fileName, pieceIndex);
+                    long hashCode = Helper.GetInt64HashCode(filePieceName);
+
+                    curHashCode = hashCode;
+                    curfilePieceName = filePieceName;
+                    //Look for node
+                    var keyValuePairs = _serviceNodeMapping.GlobalMappings.SkipWhile(pair => pair.Key < hashCode);
+                    if (keyValuePairs.Count() == 0)
+                        hashCode = 0;
+                    int node = _serviceNodeMapping.GlobalMappings.SkipWhile(pair => pair.Key < hashCode).First().Value;
+                    fileMetaData.NodeIndexForPieces[pieceIndex] = node;
+                    fileMetaData.FilePieceNames[pieceIndex] = filePieceName;
+                    curCount--;
+                }
+                _inMemoryStorage.Files.Add(fileName, fileMetaData);
+                return Ok(fileMetaData);
             }
-            int chunkSize = 20 * 1024;
-            long fileTotalSize = Convert.ToInt64(fileSize);
-            int totalPieceCount = (int)(fileTotalSize / chunkSize);
-            if (fileTotalSize % chunkSize != 0)
-                totalPieceCount++;
-            FileMetaData fileMetaData = new FileMetaData(fileName, totalPieceCount, chunkSize);
-            int curCount = totalPieceCount;
-            while (curCount > 0)
+            catch (Exception e)
             {
-                int pieceIndex = totalPieceCount - curCount;
-                string filePieceName = Helper.GetFilePieceName(fileName, pieceIndex);
-                long hashCode = Helper.GetInt64HashCode(filePieceName);
-                //Look for node
-                int node = _serviceNodeMapping.GlobalMappings.SkipWhile(pair => pair.Key < hashCode).First().Value;
-                fileMetaData.NodeIndexForPieces[pieceIndex] = node;
-                fileMetaData.FilePieceNames[pieceIndex] = filePieceName;
-                curCount--;
+                return BadRequest(e.Message);
             }
-            _inMemoryStorage.Files.Add(fileName, fileMetaData);
-            return fileMetaData;
         }
     }
 }

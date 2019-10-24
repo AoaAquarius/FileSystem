@@ -6,3 +6,9 @@
 /FileSystem/obj
 /.vs/FileSystem
 /FileSystemSlave/obj
+/FileSystemSlave/bin/Release/netcoreapp2.2
+/FileSystemMaster/obj/Release/netcoreapp2.2
+/FileSystemMaster/bin/Release/netcoreapp2.2
+/FileSystemMaster/bin/Debug/netcoreapp2.2
+/FileSystem/bin/Release/netcoreapp2.2
+/FileSystem/bin/Debug/netcoreapp2.2

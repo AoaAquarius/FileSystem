@@ -1,4 +1,5 @@
 ﻿using FileSystemClient.Models;
+using Microsoft.CodeAnalysis;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using RestSharp;
@@ -19,6 +20,54 @@ namespace FileSystemClient
         public FileService(GlobalVariables globalVariables)
         {
             _globalVariables = globalVariables;
+        }
+
+        public async Task<Stream> DownLoad(string fileName)
+        {
+            FileMetaData fileMetaData = await GetFileMetaData(fileName);
+            Stream output = new MemoryStream();
+            for (int i = 0; i < fileMetaData.FilePieceNames.Length; i++)
+            {
+                int nodeIndex = fileMetaData.NodeIndexForPieces[i];
+                string partailFileName = fileMetaData.FilePieceNames[i];
+                byte[] buffer = await RequestPartialFile(partailFileName, nodeIndex);
+                output.Write(buffer);
+            }
+            return output;
+        }
+
+        private async Task<byte[]> RequestPartialFile(string partailFileName, int nodeIndex)
+        {
+            var client = new RestClient(_globalVariables.SlaveNodeEndpoints[nodeIndex] + _globalVariables.RequestPartialFileRoute + $"?fileName={partailFileName}");
+            var request = new RestRequest(Method.GET);
+            request.AddHeader("cache-control", "no-cache");
+            IRestResponse response = await client.ExecuteTaskAsync(request);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                return response.RawBytes;
+            }
+            else
+            {
+                throw new Exception($"Cannot get partial file {partailFileName} on node {nodeIndex}.");
+            }
+        }
+
+        public async Task<FileMetaData> GetFileMetaData(string fileName)
+        {
+            var client = new RestClient(_globalVariables.GetFileMatedataURL + $"?fileName={fileName}");
+            var request = new RestRequest(Method.GET);
+            request.AddHeader("cache-control", "no-cache");
+            IRestResponse response = await client.ExecuteTaskAsync(request);
+            FileMetaData fileMetaData = null;
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                fileMetaData = JsonConvert.DeserializeObject<FileMetaData>(response.Content);
+            }
+            if (fileMetaData == null)
+            {
+                throw new Exception("Cannot get split meta data");
+            }
+            return fileMetaData;
         }
 
         public void MergeFile(string fileName, int chunkSize, string path)
@@ -54,7 +103,7 @@ namespace FileSystemClient
             var client = new RestClient(_globalVariables.RequestForSplitURL + $"?fileName={fileName}&fileSize={input.Length}");
             var request = new RestRequest(Method.GET);
             request.AddHeader("cache-control", "no-cache");
-            IRestResponse response = client.Execute(request);
+            IRestResponse response = await client.ExecuteTaskAsync(request);
             FileMetaData fileMetaData = null;
             if (response.StatusCode == HttpStatusCode.OK)
             {
@@ -65,10 +114,11 @@ namespace FileSystemClient
                 throw new Exception("Cannot get split meta data");
             }
             //Send pieces to slaves
-            await SplitFile(input, fileMetaData);
+            await SplitFileAsync(input, fileMetaData);
+            //SplitFile(input, fileMetaData);
         }
 
-        public async Task SplitFile(Stream input, FileMetaData fileMetaData)
+        public async Task SplitFileAsync(Stream input, FileMetaData fileMetaData)
         {
             int position = 0;
             IList<Task> tasks = new List<Task>();
@@ -80,7 +130,7 @@ namespace FileSystemClient
                     {
                         string fileName = fileMetaData.FilePieceNames[i];
                         int nodeIndex = fileMetaData.NodeIndexForPieces[i];
-                        tasks.Add(SendPartialFile(input, position, fileName, nodeIndex, fileMetaData.ChunkSize));
+                        tasks.Add(SendPartialFileAsync(input, position, fileName, nodeIndex, fileMetaData.ChunkSize));
                     }
                     catch (Exception e)
                     {
@@ -91,7 +141,28 @@ namespace FileSystemClient
             }
         }
 
-        private async Task SendPartialFile(Stream input, int position, string partialFileName, int nodeIndex, int bufferSize)
+        private void SplitFile(Stream input, FileMetaData fileMetaData)
+        {
+            int position = 0;
+            while (input.Position < input.Length)
+            {
+                for (int i = 0; i < fileMetaData.FilePieceNames.Length; i++)
+                {
+                    try
+                    {
+                        string fileName = fileMetaData.FilePieceNames[i];
+                        int nodeIndex = fileMetaData.NodeIndexForPieces[i];
+                        SendPartialFile(input, position, fileName, nodeIndex, fileMetaData.ChunkSize);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                    }
+                }
+            }
+        }
+
+        private async Task SendPartialFileAsync(Stream input, int position, string partialFileName, int nodeIndex, int bufferSize)
         {
             byte[] buffer = new byte[bufferSize];
             input.Read(buffer, position, bufferSize);
@@ -101,10 +172,56 @@ namespace FileSystemClient
             request.AddJsonBody(fileUploadModel);
             request.AddHeader("cache-control", "no-cache");
             IRestResponse response = await client.ExecuteTaskAsync(request);
+            if (response.StatusCode == HttpStatusCode.OK && JsonConvert.DeserializeObject<string>(response.Content) == "Success")
+            {
+                Console.WriteLine($"File piece {partialFileName} upload to slave node {nodeIndex} successfully!");
+            }
+            else
+            {
+                throw new Exception($"File piece {partialFileName} did not upload to slave node {nodeIndex} successfully!");
+            }
+        }
+
+        private void SendPartialFile(Stream input, int position, string partialFileName, int nodeIndex, int bufferSize)
+        {
+            byte[] buffer = new byte[bufferSize];
+            input.Read(buffer, position, bufferSize);
+            var client = new RestClient(_globalVariables.SlaveNodeEndpoints[nodeIndex] + _globalVariables.SaveFileAPIRoute);
+            FileUploadModel fileUploadModel = new FileUploadModel(partialFileName, buffer);
+            var request = new RestRequest(Method.POST);
+            request.AddJsonBody(fileUploadModel);
+            request.AddHeader("cache-control", "no-cache");
+            IRestResponse response = client.Execute(request);
             if (response.StatusCode != HttpStatusCode.OK)
             {
                 throw new Exception($"File piece {partialFileName} did not upload to slave node {nodeIndex} successfully!");
             }
+        }
+
+        public string GetContentType(string path)
+        {
+            var types = GetMimeTypes();
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            return types[ext];
+        }
+
+        private Dictionary<string, string> GetMimeTypes()
+        {
+            return new Dictionary<string, string>
+            {
+                {".txt", "text/plain"},
+                {".pdf", "application/pdf"},
+                {".doc", "application/vnd.ms-word"},
+                {".docx", "application/vnd.ms-word"},
+                {".xls", "application/vnd.ms-excel"},
+                {".xlsx", "application/vnd.openxmlformats"},
+                {".png", "image/png"},
+                {".jpg", "image/jpeg"},
+                {".jpeg", "image/jpeg"},
+                {".gif", "image/gif"},
+                {".csv", "text/csv"},
+                {".exe", "application/vnd.microsoft.portable-executable"}
+            };
         }
     }
 }

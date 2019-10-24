@@ -19,6 +19,11 @@ namespace FileSystem
 
         public static IWebHostBuilder CreateWebHostBuilder(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
+                .ConfigureKestrel((context, options) =>
+                {
+                    // Handle requests up to 5 G
+                    options.Limits.MaxRequestBodySize = 1000000000;
+                })
                 .UseStartup<Startup>();
     }
 }

@@ -21,9 +21,9 @@ namespace FileSystem.Controllers
             _fileService = fileService;
         }
 
-        [Route("Test")]
+        [Route("PostFile")]
         [HttpPost]
-        public async Task<ActionResult<string>> Test([FromForm] IFormCollection formCollection)
+        public async Task<ActionResult<string>> PostFile([FromForm] IFormCollection formCollection)
         {
             FormFileCollection fileCollection = (FormFileCollection)formCollection.Files;
             IList<Task> tasks = new List<Task>();
@@ -35,46 +35,14 @@ namespace FileSystem.Controllers
             return "Success";
         }
 
-        [Route("PostFile")]
-        [HttpPost]
-        public String PostFile([FromForm] IFormCollection formCollection)
+        [Route("GetFile")]
+        [HttpGet]
+        public async Task<ActionResult> GetFile(string fileName)
         {
-            String result = "Success";
-            FormFileCollection fileCollection = (FormFileCollection)formCollection.Files;
-            try
-            {
-                foreach (IFormFile file in fileCollection)
-                {
-                    StreamReader reader = new StreamReader(file.OpenReadStream());
-                    String content = reader.ReadToEnd();
-                    String name = file.FileName;
-                    String filename = @"C:/Test/" + name;
-                    if (System.IO.File.Exists(filename))
-                    {
-                        System.IO.File.Delete(filename);
-                    }
-                    using (FileStream fs = System.IO.File.Create(filename))
-                    {
-                        // Copy to file
-                        file.CopyTo(fs);
-                        // Clear Cache
-                        fs.Flush();
-                    }
-                    result = "Success";
-                }
-            }
-            catch
-            {
-                result = "Fail";
-            }
-            return result;
-        }
-
-        [HttpPut("MergeFile")]
-        public String MergeFile()
-        {
-            _fileService.MergeFile("garrett-parker-DlkF4-dbCOU-unsplash.jpg", 20 * 1024, @"C:/Test/");
-            return "OK";
+            string contentType = _fileService.GetContentType(fileName);
+            Stream stream = await _fileService.DownLoad(fileName);
+            stream.Seek(0, SeekOrigin.Begin);
+            return File(stream, contentType, fileName);
         }
     }
 }

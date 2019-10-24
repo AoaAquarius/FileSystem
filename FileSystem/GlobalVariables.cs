@@ -14,12 +14,16 @@ namespace FileSystemClient
         public string RequestForSplitURL { get; private set; }
         public string ServiceMappingURL { get; private set; }
         public string SaveFileAPIRoute { get; private set; }
+        public string GetFileMatedataURL { get; private set; }
+        public string RequestPartialFileRoute { get; private set; }
         public string[] SlaveNodeEndpoints { get; set; }
         public GlobalVariables(IConfiguration configuration)
         {
             RequestForSplitURL = configuration["RequestForSplitURL"];
             ServiceMappingURL = configuration["ServiceMappingURL"];
             SaveFileAPIRoute = configuration["SaveFileAPIRoute"];
+            GetFileMatedataURL = configuration["GetFileMatedataURL"];
+            RequestPartialFileRoute = configuration["RequestPartialFileRoute"];
             //Get ServiceMapping
             var client = new RestClient(ServiceMappingURL);
             var request = new RestRequest(Method.GET);

@@ -16,47 +16,19 @@ namespace FileSystemSlave.Controllers
     [ApiController]
     public class FileController : ControllerBase
     {
+        private GlobalVariables _globalVariables;
+        public FileController(GlobalVariables globalVariables)
+        {
+            _globalVariables = globalVariables;
+        }
         [HttpGet]
+        [Route("get")]
         public IActionResult Get(string fileName)
         {
-            var stream = System.IO.File.OpenRead(@"C:/Test/" + fileName);
+            var stream = System.IO.File.OpenRead(_globalVariables.RootDirectory + fileName);
             if (stream == null)
                 return NotFound();
             return File(stream, "application/octet-stream");
-        }
-
-        [HttpPost]
-        public string Post([FromBody] IFormCollection formCollection)
-        {
-            string result = "Success";
-            FormFileCollection fileCollection = (FormFileCollection)formCollection.Files;
-            try
-            {
-                foreach (IFormFile file in fileCollection)
-                {
-                    StreamReader reader = new StreamReader(file.OpenReadStream());
-                    string content = reader.ReadToEnd();
-                    string name = file.FileName;
-                    string filename = @"C:/Test/" + name;
-                    if (System.IO.File.Exists(filename))
-                    {
-                        System.IO.File.Delete(filename);
-                    }
-                    using (FileStream fs = System.IO.File.Create(filename))
-                    {
-                        // Copy to file
-                        file.CopyTo(fs);
-                        // Clear Cache
-                        fs.Flush();
-                    }
-                    result = "Success";
-                }
-            }
-            catch
-            {
-                result = "Fail";
-            }
-            return result;
         }
 
         [Route("SaveToStorage")]
@@ -66,7 +38,7 @@ namespace FileSystemSlave.Controllers
             string result;
             try
             {
-                string filename = @"C:/Test/" + fileUploadModel.FileName;
+                string filename = _globalVariables.RootDirectory + fileUploadModel.FileName;
                 if (System.IO.File.Exists(filename))
                 {
                     System.IO.File.Delete(filename);
@@ -79,9 +51,9 @@ namespace FileSystemSlave.Controllers
                 }
                 result = "Success";
             }
-            catch
+            catch (Exception e)
             {
-                result = "Fail";
+                result = e.Message;
             }
             return result;
         }
